@@ -28,7 +28,29 @@ class LiveUser {
   final DateTime seenAt;
 }
 
-/// WebSocket client for live locations. Employees call [sendLocation]; admins read [users].
+/// A call-signalling message relayed by the server (WebRTC offer/answer/ICE, etc.).
+class CallSignal {
+  const CallSignal({
+    required this.from,
+    required this.fromName,
+    required this.fromRole,
+    required this.callId,
+    required this.kind,
+    this.data,
+  });
+
+  final String from;
+  final String fromName;
+  final String fromRole;
+  final String callId;
+
+  /// offer, answer, candidate, reject, hangup, or unavailable (server-generated).
+  final String kind;
+  final Map<String, dynamic>? data;
+}
+
+/// WebSocket client for live locations, presence and call signalling.
+/// Employees call [sendLocation]; admins read [users] and [isOnline].
 class LiveLocationClient extends ChangeNotifier {
   LiveLocationClient({required this.token, Uri? endpoint})
     : _endpoint = endpoint ?? _defaultEndpoint();
@@ -40,6 +62,8 @@ class LiveLocationClient extends ChangeNotifier {
   final Uri _endpoint;
 
   final Map<String, LiveUser> _users = {};
+  final Map<String, String> _online = {};
+  final _signals = StreamController<CallSignal>.broadcast();
   WebSocket? _socket;
   Timer? _retryTimer;
   Timer? _flushTimer;
@@ -52,6 +76,12 @@ class LiveLocationClient extends ChangeNotifier {
 
   LiveConnection get state => _state;
   List<LiveUser> get users => _users.values.toList();
+
+  Stream<CallSignal> get signals => _signals.stream;
+
+  /// Only meaningful for admins, and only while connected.
+  bool isOnline(String userId) =>
+      _state == LiveConnection.connected && _online.containsKey(userId);
 
   static Uri _defaultEndpoint() {
     final base = Uri.parse(apiBaseUrl);
@@ -96,6 +126,7 @@ class LiveLocationClient extends ChangeNotifier {
   void _onDisconnected() {
     _socket = null;
     if (_closed) return;
+    _online.clear();
     _setState(LiveConnection.disconnected);
     _retryTimer?.cancel();
     final seconds = math.min(1 << _attempt, _maxBackoffSeconds);
@@ -135,11 +166,37 @@ class LiveLocationClient extends ChangeNotifier {
               for (final u in json['users'] as List<dynamic>)
                 _entry(u as Map<String, dynamic>),
             ]);
+          _online
+            ..clear()
+            ..addEntries([
+              for (final u in (json['online'] as List<dynamic>? ?? const []))
+                MapEntry(
+                  (u as Map<String, dynamic>)['userId'] as String,
+                  u['name'] as String,
+                ),
+            ]);
         case 'location':
           final entry = _entry(json);
           _users[entry.key] = entry.value;
+          _online[entry.key] = entry.value.name;
+        case 'online':
+          _online[json['userId'] as String] = json['name'] as String;
         case 'offline':
-          _users.remove(json['userId'] as String);
+          final id = json['userId'] as String;
+          _users.remove(id);
+          _online.remove(id);
+        case 'signal':
+          _signals.add(
+            CallSignal(
+              from: json['from'] as String,
+              fromName: json['fromName'] as String? ?? '',
+              fromRole: json['fromRole'] as String? ?? '',
+              callId: json['callId'] as String,
+              kind: json['kind'] as String,
+              data: json['data'] as Map<String, dynamic>?,
+            ),
+          );
+          return;
         default:
           return;
       }
@@ -147,6 +204,27 @@ class LiveLocationClient extends ChangeNotifier {
     } catch (e) {
       debugPrint('[live] bad message: $e');
     }
+  }
+
+  /// Returns false when the server can't be reached right now.
+  bool sendSignal({
+    required String to,
+    required String callId,
+    required String kind,
+    Map<String, dynamic>? data,
+  }) {
+    final socket = _socket;
+    if (socket == null) return false;
+    socket.add(
+      jsonEncode({
+        'type': 'signal',
+        'to': to,
+        'callId': callId,
+        'kind': kind,
+        'data': ?data,
+      }),
+    );
+    return true;
   }
 
   MapEntry<String, LiveUser> _entry(Map<String, dynamic> json) {
@@ -177,6 +255,7 @@ class LiveLocationClient extends ChangeNotifier {
     _retryTimer?.cancel();
     _flushTimer?.cancel();
     _socket?.close();
+    _signals.close();
     super.dispose();
   }
 }

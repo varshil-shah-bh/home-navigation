@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../call/call_controller.dart';
+import '../call/call_overlay.dart';
 import '../live/live_location_client.dart';
 import '../map/map_view.dart';
 
-/// Employee home: the navigation map, which also streams this user's position to admins.
+/// Employee home: the navigation map, which streams this user's position to admins
+/// and rings when an admin calls.
 class EmployeeHome extends StatefulWidget {
   const EmployeeHome({super.key, required this.token, required this.onSignOut});
 
@@ -17,19 +20,24 @@ class EmployeeHome extends StatefulWidget {
 class _EmployeeHomeState extends State<EmployeeHome> {
   late final LiveLocationClient _client = LiveLocationClient(token: widget.token)
     ..connect();
+  late final CallController _call = CallController(client: _client);
 
   @override
   void dispose() {
+    _call.dispose();
     _client.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: MapView(
-        onSignOut: widget.onSignOut,
-        onLocation: _client.sendLocation,
+    return CallHost(
+      controller: _call,
+      child: Scaffold(
+        body: MapView(
+          onSignOut: widget.onSignOut,
+          onLocation: _client.sendLocation,
+        ),
       ),
     );
   }

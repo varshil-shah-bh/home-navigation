@@ -6,6 +6,8 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Scans nearby beacons to show your position on the home map.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used for Wi-Fi voice calls with your team.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

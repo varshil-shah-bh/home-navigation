@@ -3,8 +3,9 @@ import { createServer } from 'node:http';
 import express, { type ErrorRequestHandler } from 'express';
 
 import { env } from './config/env.js';
-import { attachLocationHub } from './realtime/location.hub.js';
+import { attachRealtimeHub } from './realtime/realtime.hub.js';
 import { authRouter } from './routes/auth.routes.js';
+import { usersRouter } from './routes/users.routes.js';
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ message: 'Not found' });
@@ -31,7 +33,7 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 app.use(errorHandler);
 
 const server = createServer(app);
-const hub = await attachLocationHub(server);
+const hub = await attachRealtimeHub(server);
 
 server.listen(env.PORT, env.HOST, () => {
   console.log(`API listening on http://${env.HOST}:${env.PORT} (WebSocket at /ws)`);

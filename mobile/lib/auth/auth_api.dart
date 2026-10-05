@@ -60,6 +60,15 @@ class AuthApi {
     return User.fromJson(json['user'] as Map<String, dynamic>);
   }
 
+  /// Admin only.
+  Future<List<Employee>> employees(String token) async {
+    final json = await _send('GET', '/api/users/employees', token: token);
+    return [
+      for (final e in json['employees'] as List<dynamic>)
+        Employee.fromJson(e as Map<String, dynamic>),
+    ];
+  }
+
   Future<Map<String, dynamic>> _send(
     String method,
     String path, {
