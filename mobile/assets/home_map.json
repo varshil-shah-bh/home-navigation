@@ -1,0 +1,30 @@
+{
+  "name": "home_poc",
+  "unit": "m",
+  "note": "Origin (0,0) = Bedroom 2 top-left. x goes right, y goes down.",
+  "rooms": [
+    { "id": "bedroom2", "name": "Bedroom 2", "polygon": [[0,0],[4.2,0],[4.2,3],[0,3]] },
+    { "id": "toilet2", "name": "Toilet 2", "polygon": [[1.1,3],[3.2,3],[3.2,4.3],[1.1,4.3]] },
+    { "id": "toilet1", "name": "Toilet 1", "polygon": [[1.1,4.3],[3.2,4.3],[3.2,5.6],[1.1,5.6]] },
+    { "id": "passage", "name": "Passage", "polygon": [[3.2,3],[4.2,3],[4.2,6],[3.2,6]] },
+    { "id": "bedroom1", "name": "Bedroom 1", "polygon": [[4.2,3],[7.2,3],[7.2,6],[4.2,6]] },
+    { "id": "hall", "name": "Hall", "polygon": [[1.6,6],[7.2,6],[7.2,9],[1.6,9]] }
+  ],
+  "doors": [
+    { "id": "d1", "from": "bedroom2", "to": "passage", "position": [3.7,3.0] },
+    { "id": "d2", "from": "passage", "to": "bedroom1", "position": [4.2,4.5] },
+    { "id": "d3", "from": "passage", "to": "hall", "position": [3.7,6.0] },
+    { "id": "d4", "from": "passage", "to": "toilet2", "position": [3.2,3.65] },
+    { "id": "d5", "from": "passage", "to": "toilet1", "position": [3.2,4.95] }
+  ],
+  "exits": [
+    { "id": "main_door", "name": "Main door (safe zone)", "room": "hall", "position": [4.4,9.0] }
+  ],
+  "beaconUuid": "8a9b0c1d-2e3f-4a5b-8c6d-7e8f9a0b1c2d",
+  "beacons": [
+    { "id": "beacon-01", "room": "bedroom2", "major": 1, "minor": 1, "txPower": -59, "deployed": true, "position": [1.0,1.0] },
+    { "id": "beacon-02", "room": "passage", "major": 1, "minor": 2, "txPower": -59, "deployed": false, "position": [3.7,4.5] },
+    { "id": "beacon-03", "room": "bedroom1", "major": 1, "minor": 3, "txPower": -59, "deployed": true, "position": [5.7,4.5] },
+    { "id": "beacon-04", "room": "hall", "major": 1, "minor": 4, "txPower": -59, "deployed": true, "position": [4.4,7.5] }
+  ]
+}
