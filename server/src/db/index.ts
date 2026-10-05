@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 
@@ -10,7 +12,12 @@ export const pool = new pg.Pool({
   user: env.PGUSER,
   password: env.PGPASSWORD,
   database: env.PGDATABASE,
-  ssl: env.PGSSL ? { rejectUnauthorized: true } : false,
+  ssl: env.PGSSL
+    ? {
+      rejectUnauthorized: true,
+      ...(env.PGSSL_CA ? { ca: readFileSync(env.PGSSL_CA, 'utf8') } : {}),
+    }
+    : false,
 });
 
 export const db = drizzle({ client: pool, schema });
