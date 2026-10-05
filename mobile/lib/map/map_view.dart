@@ -1254,6 +1254,7 @@ class _RoutePreviewSheet extends StatelessWidget {
                       FilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: GColors.blue,
+                          minimumSize: const Size(0, 44),
                           shape: const StadiumBorder(),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -1541,6 +1542,7 @@ class _NavBottomBar extends StatelessWidget {
                 FilledButton(
                   style: FilledButton.styleFrom(
                     backgroundColor: GColors.blue,
+                    minimumSize: const Size(0, 44),
                     shape: const StadiumBorder(),
                   ),
                   onPressed: onExit,
