@@ -70,6 +70,8 @@ class LiveLocationClient extends ChangeNotifier {
   int _attempt = 0;
   bool _closed = false;
   LiveConnection _state = LiveConnection.disconnected;
+  bool _emergency = false;
+  String? _emergencyBy;
 
   Offset? _pending;
   DateTime _lastSentAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -78,6 +80,10 @@ class LiveLocationClient extends ChangeNotifier {
   List<LiveUser> get users => _users.values.toList();
 
   Stream<CallSignal> get signals => _signals.stream;
+
+  /// Whether an admin has raised an emergency, as last reported by the server.
+  bool get emergency => _emergency;
+  String? get emergencyBy => _emergencyBy;
 
   /// Only meaningful for admins, and only while connected.
   bool isOnline(String userId) =>
@@ -179,6 +185,9 @@ class LiveLocationClient extends ChangeNotifier {
           final entry = _entry(json);
           _users[entry.key] = entry.value;
           _online[entry.key] = entry.value.name;
+        case 'emergency':
+          _emergency = json['active'] == true;
+          _emergencyBy = _emergency ? json['by'] as String? : null;
         case 'online':
           _online[json['userId'] as String] = json['name'] as String;
         case 'offline':
@@ -204,6 +213,14 @@ class LiveLocationClient extends ChangeNotifier {
     } catch (e) {
       debugPrint('[live] bad message: $e');
     }
+  }
+
+  /// Admin only; the server ignores it from anyone else. Returns false if not connected.
+  bool setEmergency(bool active) {
+    final socket = _socket;
+    if (socket == null) return false;
+    socket.add(jsonEncode({'type': 'emergency', 'active': active}));
+    return true;
   }
 
   /// Returns false when the server can't be reached right now.

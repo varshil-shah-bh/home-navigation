@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../ble/beacon_scanner.dart';
 import '../ble/ble_debug_screen.dart';
@@ -20,10 +21,14 @@ class MapView extends StatefulWidget {
     this.assetPath = 'assets/home_map.json',
     this.onSignOut,
     this.onLocation,
+    this.emergency = false,
   });
 
   final String assetPath;
   final VoidCallback? onSignOut;
+
+  /// While true, navigation to the nearest exit starts and can't be dismissed.
+  final bool emergency;
 
   /// Called with the user's position in metres whenever it changes.
   final ValueChanged<Offset>? onLocation;
@@ -56,6 +61,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   bool _didFit = false;
   bool _navigating = false;
   bool _follow = false;
+  bool _emergency = false;
+
+  /// The user already reached the safe zone, so evacuation stops re-routing them.
+  bool _evacuated = false;
   double _sheetExtent = 0.3;
   double? _movementHeading;
   Offset? _lastFollowed;
@@ -81,6 +90,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   @override
+  void didUpdateWidget(MapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.emergency != oldWidget.emergency) _setEmergency(widget.emergency);
+  }
+
+  @override
   void dispose() {
     _engine?.dispose();
     _scanner?.dispose();
@@ -98,6 +113,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         _map = map;
         _navigator = MapNavigator(map);
       });
+      if (widget.emergency) _setEmergency(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e);
@@ -116,9 +132,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       }
       _user = metres;
       _sourceId = null;
+      if (_emergency) _pickSafestExit();
       _recomputeRoute();
     });
     widget.onLocation?.call(metres);
+    _ensureEvacuating();
     if (_follow) _followUser();
   }
 
@@ -222,15 +240,91 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   void _exitNavigation() {
+    if (_emergency && !_arrived) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Emergency in progress. Head to the safe zone.')),
+        );
+      return;
+    }
     setState(() {
       _navigating = false;
       _follow = false;
       if (_arrived) {
         _destinationId = null;
         _route = NavRoute.empty;
+        if (_emergency) _evacuated = true;
       }
     });
     _animateCamera(_fitMatrix());
+  }
+
+  // --- emergency -----------------------------------------------------------
+
+  void _setEmergency(bool on) {
+    if (on == _emergency) return;
+    _emergency = on;
+    _evacuated = false;
+
+    if (on) {
+      HapticFeedback.vibrate();
+      if (_map != null && !_live) _toggleLive();
+      setState(() {
+        if (_user != null) {
+          _pickSafestExit();
+          _recomputeRoute();
+        }
+      });
+      _ensureEvacuating();
+      return;
+    }
+
+    setState(() {
+      _navigating = false;
+      _follow = false;
+      _destinationId = null;
+      _route = NavRoute.empty;
+    });
+    if (_map != null) _animateCamera(_fitMatrix());
+  }
+
+  /// Targets whichever exit is the shortest walk from the user. Call inside setState.
+  void _pickSafestExit() {
+    final map = _map, nav = _navigator, from = _user;
+    if (_evacuated || map == null || nav == null || from == null) return;
+
+    ExitPoint? best;
+    var bestLength = double.infinity;
+    for (final exit in map.exits) {
+      final r = nav.routeToExit(from, exit);
+      if (!r.isEmpty && r.lengthInMetres < bestLength) {
+        best = exit;
+        bestLength = r.lengthInMetres;
+      }
+    }
+    if (best != null) {
+      _destinationId = best.id;
+      _sourceId = null;
+    }
+  }
+
+  void _ensureEvacuating() {
+    final user = _user;
+    if (!_emergency || _evacuated || _navigating || user == null || _destinationId == null) {
+      return;
+    }
+    setState(() {
+      _navigating = true;
+      _follow = true;
+    });
+    _animateCamera(_followMatrix(user, scale: 1.8));
+  }
+
+  String get _emergencyText {
+    if (_user == null) return 'EMERGENCY · Finding your location…';
+    if (_evacuated || _arrived) return 'EMERGENCY · You have reached the safe zone';
+    return 'EMERGENCY · Go to ${_labelFor(_destinationId)}';
   }
 
   void _overview() {
@@ -285,11 +379,13 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         }
         _user = point;
         _sourceId = null;
+        if (_emergency) _pickSafestExit();
         _recomputeRoute();
       }
     });
     final point = fix.point;
     if (point != null) widget.onLocation?.call(point);
+    _ensureEvacuating();
     if (_follow) _followUser();
   }
 
@@ -303,7 +399,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   // --- camera --------------------------------------------------------------
 
   double get _topChrome {
-    final pad = MediaQuery.paddingOf(context).top;
+    final pad = MediaQuery.paddingOf(context).top + (_emergency ? 56 : 0);
     if (_navigating) return pad + 150;
     if (_destinationId != null) return pad + 170;
     return pad + 120;
@@ -452,6 +548,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_emergency) ...[
+                      _EmergencyBanner(text: _emergencyText),
+                      const SizedBox(height: 8),
+                    ],
                     if (_navigating)
                       _NavBanner(
                         route: _route,
@@ -932,6 +1032,40 @@ class _QuickChips extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _EmergencyBanner extends StatelessWidget {
+  const _EmergencyBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: GColors.red,
+      elevation: 6,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

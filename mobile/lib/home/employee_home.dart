@@ -34,9 +34,13 @@ class _EmployeeHomeState extends State<EmployeeHome> {
     return CallHost(
       controller: _call,
       child: Scaffold(
-        body: MapView(
-          onSignOut: widget.onSignOut,
-          onLocation: _client.sendLocation,
+        body: ListenableBuilder(
+          listenable: _client,
+          builder: (context, _) => MapView(
+            onSignOut: widget.onSignOut,
+            onLocation: _client.sendLocation,
+            emergency: _client.emergency,
+          ),
         ),
       ),
     );

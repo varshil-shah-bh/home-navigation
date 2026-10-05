@@ -166,10 +166,95 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                   ),
                 ),
               ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: ListenableBuilder(
+                      listenable: widget.client,
+                      builder: (context, _) => _EmergencyButton(
+                        active: widget.client.emergency,
+                        enabled: widget.client.state == LiveConnection.connected,
+                        onPressed: _confirmEmergency,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Future<void> _confirmEmergency() async {
+    final ending = widget.client.emergency;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          ending ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+          color: ending ? GColors.green : GColors.red,
+          size: 40,
+        ),
+        title: Text(ending ? 'End the emergency?' : 'Declare an emergency?'),
+        content: Text(
+          ending
+              ? 'Employees will return to the normal map.'
+              : 'Every employee\'s app will immediately start directions to the nearest safe exit, using their live location.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: ending ? GColors.green : GColors.red,
+            ),
+            child: Text(ending ? 'All clear' : 'Declare emergency'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (!widget.client.setEmergency(!ending)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not connected to the server. Try again.')),
+      );
+    }
+  }
+}
+
+class _EmergencyButton extends StatelessWidget {
+  const _EmergencyButton({
+    required this.active,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final bool active;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: active ? GColors.green : GColors.red,
+          minimumSize: const Size(0, 56),
+          elevation: 6,
+          shape: const StadiumBorder(),
+        ),
+        onPressed: enabled ? onPressed : null,
+        icon: Icon(active ? Icons.check_circle_outline : Icons.warning_amber_rounded),
+        label: Text(active ? 'Emergency active · tap for all clear' : 'EMERGENCY'),
+      ),
     );
   }
 }

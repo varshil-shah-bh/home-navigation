@@ -16,11 +16,15 @@ import { redis, redisSub } from './redis.js';
  * pub/sub, so each server instance fans it out to its own sockets:
  *   - presence + live locations: employee -> PUBLISH -> admin sockets
  *   - call signalling (WebRTC offer/answer/ICE): caller -> PUBLISH -> callee's socket
+ *   - emergency alerts: admin -> PUBLISH -> every connected socket; the active state is kept
+ *     in Redis so late joiners and reconnecting devices still receive it
  * Media never touches the server; peers connect directly using STUN.
  */
 
 const LOCATION_CHANNEL = 'locations:events';
 const SIGNAL_CHANNEL = 'signals:events';
+const EMERGENCY_CHANNEL = 'emergency:events';
+const EMERGENCY_KEY = 'emergency:state';
 const LOCATION_PREFIX = 'location:user:';
 const PRESENCE_PREFIX = 'presence:user:';
 const KEY_TTL_SECONDS = 45;
@@ -29,6 +33,7 @@ const MIN_UPDATE_INTERVAL_MS = 200;
 const MAX_BUFFERED_BYTES = 1_000_000;
 const SIGNAL_WINDOW_MS = 10_000;
 const MAX_SIGNALS_PER_WINDOW = 60;
+const EMERGENCY_COOLDOWN_MS = 1000;
 
 // Metres in map space; generous bounds just reject garbage.
 const locationMessage = z.object({
@@ -43,6 +48,11 @@ const signalMessage = z.object({
   callId: z.string().min(1).max(64),
   kind: z.enum(['offer', 'answer', 'candidate', 'reject', 'hangup']),
   data: z.record(z.string(), z.unknown()).optional(),
+});
+
+const emergencyMessage = z.object({
+  type: z.literal('emergency'),
+  active: z.boolean(),
 });
 
 // Admins call employees; employees only answer.
@@ -60,6 +70,7 @@ interface Client {
   lastUpdateAt: number;
   signalWindowStart: number;
   signalCount: number;
+  lastEmergencyAt: number;
   /** Keeps a caller's offer and ICE candidates in order across async checks. */
   queue: Promise<void>;
 }
@@ -180,6 +191,24 @@ async function handleSignal(client: Client, json: unknown) {
   );
 }
 
+async function handleEmergency(client: Client, json: unknown) {
+  if (client.role !== 'admin') return;
+  const parsed = emergencyMessage.safeParse(json);
+  if (!parsed.success) return;
+
+  const now = Date.now();
+  if (now - client.lastEmergencyAt < EMERGENCY_COOLDOWN_MS) return;
+  client.lastEmergencyAt = now;
+
+  if (parsed.data.active) {
+    const state = JSON.stringify({ type: 'emergency', active: true, by: client.name, ts: now });
+    await redis.multi().set(EMERGENCY_KEY, state).publish(EMERGENCY_CHANNEL, state).exec();
+  } else {
+    const state = JSON.stringify({ type: 'emergency', active: false, by: client.name, ts: now });
+    await redis.multi().del(EMERGENCY_KEY).publish(EMERGENCY_CHANNEL, state).exec();
+  }
+}
+
 function onMessage(client: Client, data: RawData) {
   let json: unknown;
   try {
@@ -193,6 +222,8 @@ function onMessage(client: Client, data: RawData) {
     handleLocation(client, json);
   } else if (type === 'signal') {
     client.queue = client.queue.then(() => handleSignal(client, json)).catch(logError);
+  } else if (type === 'emergency') {
+    handleEmergency(client, json).catch(logError);
   }
 }
 
@@ -214,9 +245,11 @@ function onClose(client: Client) {
 export async function attachRealtimeHub(server: Server) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
-  await redisSub.subscribe(LOCATION_CHANNEL, SIGNAL_CHANNEL);
+  await redisSub.subscribe(LOCATION_CHANNEL, SIGNAL_CHANNEL, EMERGENCY_CHANNEL);
   redisSub.on('message', (channel, message) => {
-    if (channel === LOCATION_CHANNEL) {
+    if (channel === EMERGENCY_CHANNEL) {
+      for (const { ws } of clients.values()) send(ws, message);
+    } else if (channel === LOCATION_CHANNEL) {
       for (const { ws, role } of clients.values()) {
         if (role === 'admin') send(ws, message);
       }
@@ -243,6 +276,7 @@ export async function attachRealtimeHub(server: Server) {
       lastUpdateAt: 0,
       signalWindowStart: 0,
       signalCount: 0,
+      lastEmergencyAt: 0,
       queue: Promise.resolve(),
     };
     clients.set(ws, client);
@@ -262,6 +296,12 @@ export async function attachRealtimeHub(server: Server) {
     ws.on('message', (data) => onMessage(client, data));
     ws.on('close', () => onClose(client));
     ws.on('error', logError);
+
+    // Always tell a new connection the current state, so a stale client can't stay in emergency.
+    redis
+      .get(EMERGENCY_KEY)
+      .then((state) => send(ws, state ?? JSON.stringify({ type: 'emergency', active: false })))
+      .catch(logError);
 
     if (client.role === 'employee') {
       const presence = JSON.stringify({ userId: client.userId, name: client.name });
