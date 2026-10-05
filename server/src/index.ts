@@ -1,6 +1,9 @@
+import { createServer } from 'node:http';
+
 import express, { type ErrorRequestHandler } from 'express';
 
 import { env } from './config/env.js';
+import { attachLocationHub } from './realtime/location.hub.js';
 import { authRouter } from './routes/auth.routes.js';
 
 const app = express();
@@ -27,6 +30,17 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(errorHandler);
 
-app.listen(env.PORT, env.HOST, () => {
-  console.log(`API listening on http://${env.HOST}:${env.PORT}`);
+const server = createServer(app);
+const hub = await attachLocationHub(server);
+
+server.listen(env.PORT, env.HOST, () => {
+  console.log(`API listening on http://${env.HOST}:${env.PORT} (WebSocket at /ws)`);
 });
+
+function shutdown() {
+  hub.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

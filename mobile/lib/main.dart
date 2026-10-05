@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'auth/auth_controller.dart';
 import 'auth/screens/login_screen.dart';
 import 'ble/ble_permissions.dart';
+import 'home/admin_shell.dart';
+import 'home/employee_home.dart';
 import 'map/map_painter.dart';
-import 'map/map_view.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,8 +92,16 @@ class _AuthGate extends StatelessWidget {
       AuthStatus.unknown => const Scaffold(
           body: Center(child: CircularProgressIndicator()),
         ),
-      AuthStatus.authenticated => Scaffold(body: MapView(onSignOut: auth.logout)),
+      AuthStatus.authenticated => _homeFor(auth),
       AuthStatus.unauthenticated => const LoginScreen(),
     };
+  }
+
+  Widget _homeFor(AuthController auth) {
+    final user = auth.user!;
+    final token = auth.token!;
+    return user.isAdmin
+        ? AdminShell(key: ValueKey(user.id), token: token, onSignOut: auth.logout)
+        : EmployeeHome(key: ValueKey(user.id), token: token, onSignOut: auth.logout);
   }
 }

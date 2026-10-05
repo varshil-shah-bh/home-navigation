@@ -15,10 +15,18 @@ const _you = '__you__';
 const _walkingSpeed = 1.2;
 
 class MapView extends StatefulWidget {
-  const MapView({super.key, this.assetPath = 'assets/home_map.json', this.onSignOut});
+  const MapView({
+    super.key,
+    this.assetPath = 'assets/home_map.json',
+    this.onSignOut,
+    this.onLocation,
+  });
 
   final String assetPath;
   final VoidCallback? onSignOut;
+
+  /// Called with the user's position in metres whenever it changes.
+  final ValueChanged<Offset>? onLocation;
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -110,6 +118,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _sourceId = null;
       _recomputeRoute();
     });
+    widget.onLocation?.call(metres);
     if (_follow) _followUser();
   }
 
@@ -279,6 +288,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         _recomputeRoute();
       }
     });
+    final point = fix.point;
+    if (point != null) widget.onLocation?.call(point);
     if (_follow) _followUser();
   }
 

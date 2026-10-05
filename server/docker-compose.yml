@@ -1,0 +1,14 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: home-nav-redis
+    ports:
+      - "6379:6379"
+    # Live locations are ephemeral, so persistence is off.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
