@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'auth/auth_controller.dart';
 import 'auth/screens/login_screen.dart';
+import 'background/background_service.dart';
 import 'ble/ble_permissions.dart';
 import 'home/admin_shell.dart';
 import 'home/employee_home.dart';
@@ -11,6 +12,7 @@ import 'map/map_painter.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  BackgroundService.init();
   final auth = AuthController()..restore();
   runApp(HomePocApp(auth: auth));
   unawaited(requestBlePermissions());

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../background/background_service.dart';
+import '../background/emergency_alerter.dart';
 import '../call/call_controller.dart';
 import '../call/call_overlay.dart';
 import '../live/live_location_client.dart';
@@ -21,9 +23,19 @@ class _EmployeeHomeState extends State<EmployeeHome> {
   late final LiveLocationClient _client = LiveLocationClient(token: widget.token)
     ..connect();
   late final CallController _call = CallController(client: _client);
+  late final EmergencyAlerter _alerter;
+
+  @override
+  void initState() {
+    super.initState();
+    _alerter = EmergencyAlerter(_client);
+    BackgroundService.start();
+  }
 
   @override
   void dispose() {
+    _alerter.dispose();
+    BackgroundService.stop();
     _call.dispose();
     _client.dispose();
     super.dispose();

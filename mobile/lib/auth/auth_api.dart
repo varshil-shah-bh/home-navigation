@@ -9,7 +9,7 @@ import 'models/user.dart';
 /// Override with `--dart-define=API_BASE_URL=http://host:port`.
 const apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://192.168.0.135:3000',
+  defaultValue: 'http://210.79.129.32:3000',
 );
 
 class ApiException implements Exception {
