@@ -16,10 +16,12 @@ class LiveUser {
     required this.name,
     required this.position,
     required this.seenAt,
+    this.hasDisability = false,
   });
 
   final String userId;
   final String name;
+  final bool hasDisability;
 
   /// Metres in map space.
   final Offset position;
@@ -251,6 +253,7 @@ class LiveLocationClient extends ChangeNotifier {
       LiveUser(
         userId: id,
         name: json['name'] as String,
+        hasDisability: json['hasDisability'] == true,
         position: Offset(
           (json['x'] as num).toDouble(),
           (json['y'] as num).toDouble(),

@@ -66,6 +66,7 @@ interface Client {
   userId: string;
   name: string;
   role: UserRole;
+  hasDisability: boolean;
   alive: boolean;
   lastUpdateAt: number;
   signalWindowStart: number;
@@ -92,7 +93,7 @@ async function authenticate(req: IncomingMessage) {
     const claims = verifyToken(header.slice('Bearer '.length));
     const user = await db.query.users.findFirst({
       where: eq(users.id, claims.sub),
-      columns: { id: true, name: true, role: true },
+      columns: { id: true, name: true, role: true, hasDisability: true },
     });
     return user ?? null;
   } catch {
@@ -134,6 +135,7 @@ function handleLocation(client: Client, json: unknown) {
     type: 'location',
     userId: client.userId,
     name: client.name,
+    hasDisability: client.hasDisability,
     x: parsed.data.x,
     y: parsed.data.y,
     ts: now,
@@ -266,12 +268,13 @@ export async function attachRealtimeHub(server: Server) {
     }
   });
 
-  function onConnection(ws: WebSocket, user: { id: string; name: string; role: UserRole }) {
+  function onConnection(ws: WebSocket, user: { id: string; name: string; role: UserRole; hasDisability: boolean }) {
     const client: Client = {
       ws,
       userId: user.id,
       name: user.name,
       role: user.role,
+      hasDisability: user.hasDisability,
       alive: true,
       lastUpdateAt: 0,
       signalWindowStart: 0,
@@ -304,11 +307,19 @@ export async function attachRealtimeHub(server: Server) {
       .catch(logError);
 
     if (client.role === 'employee') {
-      const presence = JSON.stringify({ userId: client.userId, name: client.name });
+      const presence = JSON.stringify({ userId: client.userId, name: client.name, hasDisability: client.hasDisability });
       redis
         .multi()
         .set(presenceKey(client.userId), presence, 'EX', KEY_TTL_SECONDS)
-        .publish(LOCATION_CHANNEL, JSON.stringify({ type: 'online', userId: client.userId, name: client.name }))
+        .publish(
+          LOCATION_CHANNEL,
+          JSON.stringify({
+            type: 'online',
+            userId: client.userId,
+            name: client.name,
+            hasDisability: client.hasDisability,
+          }),
+        )
         .exec()
         .catch(logError);
     } else {

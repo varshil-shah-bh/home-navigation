@@ -50,16 +50,23 @@ class User {
 
 /// A callable colleague, as listed to admins.
 class Employee {
-  const Employee({required this.id, required this.name, required this.email});
+  const Employee({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.hasDisability = false,
+  });
 
   final String id;
   final String name;
   final String email;
+  final bool hasDisability;
 
   factory Employee.fromJson(Map<String, dynamic> json) => Employee(
         id: json['id'] as String,
         name: json['name'] as String,
         email: json['email'] as String,
+        hasDisability: json['hasDisability'] == true,
       );
 }
 

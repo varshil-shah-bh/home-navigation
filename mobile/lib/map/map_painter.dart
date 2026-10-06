@@ -19,6 +19,9 @@ abstract final class GColors {
   static const wall = Color(0xFFC8CBD0);
   static const text = Color(0xFF3C4043);
   static const textMuted = Color(0xFF5F6368);
+
+  /// Marks people who need assistance (employees with a disability).
+  static const assist = Color(0xFF7B1FA2);
 }
 
 /// Visual category of a room, mirroring Google's POI colour coding.

@@ -13,7 +13,7 @@ usersRouter.get('/employees', requireAuth, async (_req, res: Response<unknown, A
   }
   const employees = await db.query.users.findMany({
     where: eq(users.role, 'employee'),
-    columns: { id: true, name: true, email: true },
+    columns: { id: true, name: true, email: true, hasDisability: true },
     orderBy: asc(users.name),
   });
   res.json({ employees });

@@ -26,7 +26,7 @@ class LiveMapScreen extends StatefulWidget {
 
 class _LiveMapScreenState extends State<LiveMapScreen> {
   static const _projection = MapProjection(scale: 70, mapOrigin: Offset.zero);
-  static const _topChrome = 72.0;
+  static const _topChrome = 108.0;
 
   final _controller = TransformationController();
   MapData? _map;
@@ -121,48 +121,55 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Row(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: ListenableBuilder(
-                          listenable: widget.client,
-                          builder: (context, _) => _StatusChip(
-                            state: widget.client.state,
-                            online: widget.client.users.length,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Material(
-                        color: Colors.white,
-                        elevation: 3,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: 'Fit to screen',
-                          icon: const Icon(Icons.fit_screen),
-                          onPressed: () => _controller.value = _fitMatrix(
-                            map,
-                            constraints.biggest,
-                          ),
-                        ),
-                      ),
-                      if (widget.onSignOut != null) ...[
-                        const SizedBox(width: 8),
-                        Material(
-                          color: Colors.white,
-                          elevation: 3,
-                          shape: const CircleBorder(),
-                          child: IconButton(
-                            tooltip: 'Sign out',
-                            icon: const Icon(
-                              Icons.logout_rounded,
-                              color: GColors.redDark,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: ListenableBuilder(
+                              listenable: widget.client,
+                              builder: (context, _) => _StatusChip(
+                                state: widget.client.state,
+                                online: widget.client.users.length,
+                              ),
                             ),
-                            onPressed: widget.onSignOut,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Material(
+                            color: Colors.white,
+                            elevation: 3,
+                            shape: const CircleBorder(),
+                            child: IconButton(
+                              tooltip: 'Fit to screen',
+                              icon: const Icon(Icons.fit_screen),
+                              onPressed: () => _controller.value = _fitMatrix(
+                                map,
+                                constraints.biggest,
+                              ),
+                            ),
+                          ),
+                          if (widget.onSignOut != null) ...[
+                            const SizedBox(width: 8),
+                            Material(
+                              color: Colors.white,
+                              elevation: 3,
+                              shape: const CircleBorder(),
+                              child: IconButton(
+                                tooltip: 'Sign out',
+                                icon: const Icon(
+                                  Icons.logout_rounded,
+                                  color: GColors.redDark,
+                                ),
+                                onPressed: widget.onSignOut,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const _AssistLegend(),
                     ],
                   ),
                 ),
@@ -176,7 +183,8 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                       listenable: widget.client,
                       builder: (context, _) => _EmergencyButton(
                         active: widget.client.emergency,
-                        enabled: widget.client.state == LiveConnection.connected,
+                        enabled:
+                            widget.client.state == LiveConnection.connected,
                         onPressed: _confirmEmergency,
                       ),
                     ),
@@ -202,9 +210,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
         title: Text(ending ? 'End the emergency?' : 'Declare an emergency?'),
         content: Text(
-          ending
-              ? 'Employees will return to the normal map.'
-              : 'Every employee\'s app will immediately start directions to the nearest safe exit, using their live location.',
+          ending ? 'Employees will return to the normal map.' : 'Every employee\'s app will immediately start directions to the nearest safe exit, using their live location.',
         ),
         actions: [
           TextButton(
@@ -224,7 +230,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     if (confirmed != true || !mounted) return;
     if (!widget.client.setEmergency(!ending)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not connected to the server. Try again.')),
+        const SnackBar(
+          content: Text('Not connected to the server. Try again.'),
+        ),
       );
     }
   }
@@ -253,8 +261,12 @@ class _EmergencyButton extends StatelessWidget {
           shape: const StadiumBorder(),
         ),
         onPressed: enabled ? onPressed : null,
-        icon: Icon(active ? Icons.check_circle_outline : Icons.warning_amber_rounded),
-        label: Text(active ? 'Emergency active · tap for all clear' : 'EMERGENCY'),
+        icon: Icon(
+          active ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+        ),
+        label: Text(
+          active ? 'Emergency active · tap for all clear' : 'EMERGENCY',
+        ),
       ),
     );
   }
@@ -309,6 +321,49 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+class _AssistLegend extends StatelessWidget {
+  const _AssistLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      shape: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: const BoxDecoration(
+                color: GColors.assist,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.accessible_rounded,
+                size: 14,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Needs assistance',
+              style: TextStyle(
+                color: GColors.text,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PeoplePainter extends CustomPainter {
   _PeoplePainter({
     required this.users,
@@ -320,7 +375,6 @@ class _PeoplePainter extends CustomPainter {
   static const _palette = [
     Color(0xFF1A73E8),
     Color(0xFFE37400),
-    Color(0xFF8E63CE),
     Color(0xFF188038),
     Color(0xFFD93025),
     Color(0xFF00897B),
@@ -334,19 +388,40 @@ class _PeoplePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final user in users) {
       final stale = now.difference(user.seenAt) > _staleAfter;
-      final base = _palette[user.userId.hashCode.abs() % _palette.length];
+      final base = user.hasDisability
+          ? GColors.assist
+          : _palette[user.userId.hashCode.abs() % _palette.length];
       final color = stale ? base.withValues(alpha: 0.45) : base;
       final c = projection.toPixels(user.position);
 
-      canvas.drawCircle(c + const Offset(0, 1.5), 15, Paint()..color = const Color(0x33000000));
+      if (user.hasDisability) {
+        canvas.drawCircle(
+          c,
+          21,
+          Paint()..color = base.withValues(alpha: stale ? 0.12 : 0.22),
+        );
+      }
+      canvas.drawCircle(
+        c + const Offset(0, 1.5),
+        15,
+        Paint()..color = const Color(0x33000000),
+      );
       canvas.drawCircle(c, 15, Paint()..color = Colors.white);
       canvas.drawCircle(c, 12, Paint()..color = color);
-      _text(
-        canvas,
-        user.name.isEmpty ? '?' : user.name.characters.first.toUpperCase(),
-        c,
-        const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-      );
+      if (user.hasDisability) {
+        _icon(canvas, Icons.accessible_rounded, c, 17);
+      } else {
+        _text(
+          canvas,
+          user.name.isEmpty ? '?' : user.name.characters.first.toUpperCase(),
+          c,
+          const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      }
 
       final label = _layout(
         user.name,
@@ -356,29 +431,48 @@ class _PeoplePainter extends CustomPainter {
           fontWeight: FontWeight.w600,
         ),
       );
+      final labelDy = user.hasDisability ? 21 : 15;
       final pill = RRect.fromRectAndRadius(
         Rect.fromCenter(
-          center: c + Offset(0, 15 + 4 + label.height / 2 + 2),
+          center: c + Offset(0, labelDy + 4 + label.height / 2 + 2),
           width: label.width + 12,
           height: label.height + 4,
         ),
         const Radius.circular(10),
       );
       canvas.drawRRect(pill, Paint()..color = const Color(0xE6FFFFFF));
-      label.paint(canvas, pill.center - Offset(label.width / 2, label.height / 2));
+      label.paint(
+        canvas,
+        pill.center - Offset(label.width / 2, label.height / 2),
+      );
     }
   }
 
-  TextPainter _layout(String text, TextStyle style) =>
-      TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: 140);
+  TextPainter _layout(String text, TextStyle style) => TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  )..layout(maxWidth: 140);
 
   void _text(Canvas canvas, String text, Offset centre, TextStyle style) {
     final tp = _layout(text, style);
+    tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
+  }
+
+  void _icon(Canvas canvas, IconData icon, Offset centre, double size) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: size,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: Colors.white,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
     tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
   }
 
