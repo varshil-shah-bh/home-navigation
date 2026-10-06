@@ -122,6 +122,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: ListenableBuilder(
@@ -278,6 +279,7 @@ class _StatusChip extends StatelessWidget {
 
     return Align(
       alignment: Alignment.centerLeft,
+      heightFactor: 1,
       child: Material(
         color: Colors.white,
         elevation: 3,

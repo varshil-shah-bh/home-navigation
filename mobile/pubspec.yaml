@@ -41,6 +41,7 @@ dependencies:
   flutter_webrtc: ^1.6.2+hotfix.3
   flutter_foreground_task: ^11.0.3
   vibration: ^3.2.1
+  audioplayers: ^6.8.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
