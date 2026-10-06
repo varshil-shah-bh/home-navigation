@@ -18,6 +18,8 @@ import { redis, redisSub } from './redis.js';
  *   - call signalling (WebRTC offer/answer/ICE): caller -> PUBLISH -> callee's socket
  *   - emergency alerts: admin -> PUBLISH -> every connected socket; the active state is kept
  *     in Redis so late joiners and reconnecting devices still receive it
+ *   - emergency responders: employees who volunteer during an emergency also receive live
+ *     locations until the emergency ends
  * Media never touches the server; peers connect directly using STUN.
  */
 
@@ -25,6 +27,7 @@ const LOCATION_CHANNEL = 'locations:events';
 const SIGNAL_CHANNEL = 'signals:events';
 const EMERGENCY_CHANNEL = 'emergency:events';
 const EMERGENCY_KEY = 'emergency:state';
+const RESPONDERS_KEY = 'emergency:responders';
 const LOCATION_PREFIX = 'location:user:';
 const PRESENCE_PREFIX = 'presence:user:';
 const KEY_TTL_SECONDS = 45;
@@ -55,6 +58,11 @@ const emergencyMessage = z.object({
   active: z.boolean(),
 });
 
+const responderMessage = z.object({
+  type: z.literal('responder'),
+  active: z.boolean(),
+});
+
 // Admins call employees; employees only answer.
 const allowedSignals: Record<UserRole, ReadonlySet<string>> = {
   admin: new Set(['offer', 'candidate', 'hangup']),
@@ -67,6 +75,8 @@ interface Client {
   name: string;
   role: UserRole;
   hasDisability: boolean;
+  /** Volunteering in the current emergency; receives everyone's live location. */
+  responder: boolean;
   alive: boolean;
   lastUpdateAt: number;
   signalWindowStart: number;
@@ -116,9 +126,18 @@ async function scanValues(prefix: string): Promise<unknown[]> {
   return values.flatMap((v) => (v ? [JSON.parse(v)] : []));
 }
 
-async function snapshot() {
-  const [locations, online] = await Promise.all([scanValues(LOCATION_PREFIX), scanValues(PRESENCE_PREFIX)]);
-  return { type: 'snapshot', users: locations, online };
+async function snapshot(excludeUserId?: string) {
+  const [locations, online, responderMap] = await Promise.all([
+    scanValues(LOCATION_PREFIX),
+    scanValues(PRESENCE_PREFIX),
+    redis.hgetall(RESPONDERS_KEY),
+  ]);
+  return {
+    type: 'snapshot',
+    users: locations.filter((l) => (l as { userId?: string }).userId !== excludeUserId),
+    online,
+    responders: Object.entries(responderMap).map(([userId, name]) => ({ userId, name })),
+  };
 }
 
 function handleLocation(client: Client, json: unknown) {
@@ -202,12 +221,40 @@ async function handleEmergency(client: Client, json: unknown) {
   if (now - client.lastEmergencyAt < EMERGENCY_COOLDOWN_MS) return;
   client.lastEmergencyAt = now;
 
+  // The response team only lasts for one emergency, so both start and end reset it.
   if (parsed.data.active) {
     const state = JSON.stringify({ type: 'emergency', active: true, by: client.name, ts: now });
-    await redis.multi().set(EMERGENCY_KEY, state).publish(EMERGENCY_CHANNEL, state).exec();
+    await redis.multi().del(RESPONDERS_KEY).set(EMERGENCY_KEY, state).publish(EMERGENCY_CHANNEL, state).exec();
   } else {
     const state = JSON.stringify({ type: 'emergency', active: false, by: client.name, ts: now });
-    await redis.multi().del(EMERGENCY_KEY).publish(EMERGENCY_CHANNEL, state).exec();
+    await redis.multi().del(EMERGENCY_KEY, RESPONDERS_KEY).publish(EMERGENCY_CHANNEL, state).exec();
+  }
+}
+
+async function handleResponder(client: Client, json: unknown) {
+  if (client.role !== 'employee') return;
+  const parsed = responderMessage.safeParse(json);
+  if (!parsed.success) return;
+  const { active } = parsed.data;
+
+  if (active) {
+    if (!(await redis.exists(EMERGENCY_KEY))) return;
+    client.responder = true;
+    await redis
+      .multi()
+      .hset(RESPONDERS_KEY, client.userId, client.name)
+      .publish(LOCATION_CHANNEL, JSON.stringify({ type: 'responder', userId: client.userId, name: client.name, active }))
+      .exec();
+    send(client.ws, JSON.stringify({ type: 'responder_status', active: true }));
+    send(client.ws, JSON.stringify(await snapshot(client.userId)));
+  } else {
+    client.responder = false;
+    await redis
+      .multi()
+      .hdel(RESPONDERS_KEY, client.userId)
+      .publish(LOCATION_CHANNEL, JSON.stringify({ type: 'responder', userId: client.userId, name: client.name, active }))
+      .exec();
+    send(client.ws, JSON.stringify({ type: 'responder_status', active: false }));
   }
 }
 
@@ -226,6 +273,8 @@ function onMessage(client: Client, data: RawData) {
     client.queue = client.queue.then(() => handleSignal(client, json)).catch(logError);
   } else if (type === 'emergency') {
     handleEmergency(client, json).catch(logError);
+  } else if (type === 'responder') {
+    handleResponder(client, json).catch(logError);
   }
 }
 
@@ -250,10 +299,25 @@ export async function attachRealtimeHub(server: Server) {
   await redisSub.subscribe(LOCATION_CHANNEL, SIGNAL_CHANNEL, EMERGENCY_CHANNEL);
   redisSub.on('message', (channel, message) => {
     if (channel === EMERGENCY_CHANNEL) {
-      for (const { ws } of clients.values()) send(ws, message);
+      let active = true;
+      try {
+        active = JSON.parse(message).active !== false;
+      } catch {
+        // Treat unparseable state as still active so nobody loses an alert.
+      }
+      for (const client of clients.values()) {
+        if (!active) client.responder = false;
+        send(client.ws, message);
+      }
     } else if (channel === LOCATION_CHANNEL) {
-      for (const { ws, role } of clients.values()) {
-        if (role === 'admin') send(ws, message);
+      let origin: unknown;
+      try {
+        origin = JSON.parse(message).userId;
+      } catch {
+        return;
+      }
+      for (const { ws, role, responder, userId } of clients.values()) {
+        if (role === 'admin' || (responder && userId !== origin)) send(ws, message);
       }
     } else if (channel === SIGNAL_CHANNEL) {
       let to: unknown;
@@ -275,6 +339,7 @@ export async function attachRealtimeHub(server: Server) {
       name: user.name,
       role: user.role,
       hasDisability: user.hasDisability,
+      responder: false,
       alive: true,
       lastUpdateAt: 0,
       signalWindowStart: 0,
@@ -303,7 +368,15 @@ export async function attachRealtimeHub(server: Server) {
     // Always tell a new connection the current state, so a stale client can't stay in emergency.
     redis
       .get(EMERGENCY_KEY)
-      .then((state) => send(ws, state ?? JSON.stringify({ type: 'emergency', active: false })))
+      .then(async (state) => {
+        send(ws, state ?? JSON.stringify({ type: 'emergency', active: false }));
+        // A responder who reconnects mid-emergency stays on the team.
+        if (state && client.role === 'employee' && (await redis.hexists(RESPONDERS_KEY, client.userId))) {
+          client.responder = true;
+          send(ws, JSON.stringify({ type: 'responder_status', active: true }));
+          send(ws, JSON.stringify(await snapshot(client.userId)));
+        }
+      })
       .catch(logError);
 
     if (client.role === 'employee') {

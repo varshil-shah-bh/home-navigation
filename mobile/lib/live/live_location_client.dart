@@ -17,17 +17,30 @@ class LiveUser {
     required this.position,
     required this.seenAt,
     this.hasDisability = false,
+    this.isResponder = false,
   });
 
   final String userId;
   final String name;
   final bool hasDisability;
 
+  /// Volunteering on the emergency response team.
+  final bool isResponder;
+
   /// Metres in map space.
   final Offset position;
 
   /// Local receipt time, so staleness doesn't depend on the server clock.
   final DateTime seenAt;
+
+  LiveUser withResponder(bool value) => LiveUser(
+    userId: userId,
+    name: name,
+    position: position,
+    seenAt: seenAt,
+    hasDisability: hasDisability,
+    isResponder: value,
+  );
 }
 
 /// A call-signalling message relayed by the server (WebRTC offer/answer/ICE, etc.).
@@ -74,18 +87,27 @@ class LiveLocationClient extends ChangeNotifier {
   LiveConnection _state = LiveConnection.disconnected;
   bool _emergency = false;
   String? _emergencyBy;
+  bool _responding = false;
+  final Set<String> _responders = {};
 
   Offset? _pending;
   DateTime _lastSentAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   LiveConnection get state => _state;
-  List<LiveUser> get users => _users.values.toList();
+  List<LiveUser> get users => [
+    for (final u in _users.values)
+      if (_responders.contains(u.userId)) u.withResponder(true) else u,
+  ];
 
   Stream<CallSignal> get signals => _signals.stream;
 
   /// Whether an admin has raised an emergency, as last reported by the server.
   bool get emergency => _emergency;
   String? get emergencyBy => _emergencyBy;
+
+  /// Whether this user has joined the emergency response team. While true, [users]
+  /// holds every other employee's live location.
+  bool get responding => _responding;
 
   /// Only meaningful for admins, and only while connected.
   bool isOnline(String userId) =>
@@ -183,6 +205,12 @@ class LiveLocationClient extends ChangeNotifier {
                   u['name'] as String,
                 ),
             ]);
+          _responders
+            ..clear()
+            ..addAll([
+              for (final r in (json['responders'] as List<dynamic>? ?? const []))
+                (r as Map<String, dynamic>)['userId'] as String,
+            ]);
         case 'location':
           final entry = _entry(json);
           _users[entry.key] = entry.value;
@@ -190,6 +218,22 @@ class LiveLocationClient extends ChangeNotifier {
         case 'emergency':
           _emergency = json['active'] == true;
           _emergencyBy = _emergency ? json['by'] as String? : null;
+          if (!_emergency) {
+            // Only responders hold other people's locations as an employee; drop them with the team.
+            if (_responding) _users.clear();
+            _responders.clear();
+            _responding = false;
+          }
+        case 'responder':
+          final id = json['userId'] as String;
+          if (json['active'] == true) {
+            _responders.add(id);
+          } else {
+            _responders.remove(id);
+          }
+        case 'responder_status':
+          _responding = json['active'] == true;
+          if (!_responding) _users.clear();
         case 'online':
           _online[json['userId'] as String] = json['name'] as String;
         case 'offline':
@@ -222,6 +266,14 @@ class LiveLocationClient extends ChangeNotifier {
     final socket = _socket;
     if (socket == null) return false;
     socket.add(jsonEncode({'type': 'emergency', 'active': active}));
+    return true;
+  }
+
+  /// Employee only: join or leave the response team. Returns false if not connected.
+  bool setResponder(bool active) {
+    final socket = _socket;
+    if (socket == null) return false;
+    socket.add(jsonEncode({'type': 'responder', 'active': active}));
     return true;
   }
 

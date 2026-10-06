@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../live/live_location_client.dart';
+import '../live/people_painter.dart';
 import '../map/map_data.dart';
 import '../map/map_painter.dart';
 
@@ -109,7 +110,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                     builder: (context, _) => CustomPaint(
                       size: _projection.canvasSize(map),
                       painter: MapPainter(map: map, projection: _projection),
-                      foregroundPainter: _PeoplePainter(
+                      foregroundPainter: PeoplePainter(
                         users: widget.client.users,
                         projection: _projection,
                         now: DateTime.now(),
@@ -210,7 +211,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
         title: Text(ending ? 'End the emergency?' : 'Declare an emergency?'),
         content: Text(
-          ending ? 'Employees will return to the normal map.' : 'Every employee\'s app will immediately start directions to the nearest safe exit, using their live location.',
+          ending ? 'Employees will return to the normal map.' : 'Every employee\'s app will immediately be alerted and can navigate to the nearest safe exit. Employees can also volunteer as emergency responders.',
         ),
         actions: [
           TextButton(
@@ -330,32 +331,21 @@ class _AssistLegend extends StatelessWidget {
       color: Colors.white,
       elevation: 3,
       shape: const StadiumBorder(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: const BoxDecoration(
-                color: GColors.assist,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.accessible_rounded,
-                size: 14,
-                color: Colors.white,
-              ),
+            _LegendItem(
+              color: GColors.assist,
+              icon: Icons.accessible_rounded,
+              label: 'Needs assistance',
             ),
-            const SizedBox(width: 8),
-            const Text(
-              'Needs assistance',
-              style: TextStyle(
-                color: GColors.text,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+            SizedBox(width: 14),
+            _LegendItem(
+              color: GColors.responder,
+              icon: Icons.health_and_safety_rounded,
+              label: 'Responder',
             ),
           ],
         ),
@@ -364,118 +354,39 @@ class _AssistLegend extends StatelessWidget {
   }
 }
 
-class _PeoplePainter extends CustomPainter {
-  _PeoplePainter({
-    required this.users,
-    required this.projection,
-    required this.now,
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({
+    required this.color,
+    required this.icon,
+    required this.label,
   });
 
-  static const _staleAfter = Duration(seconds: 30);
-  static const _palette = [
-    Color(0xFF1A73E8),
-    Color(0xFFE37400),
-    Color(0xFF188038),
-    Color(0xFFD93025),
-    Color(0xFF00897B),
-  ];
-
-  final List<LiveUser> users;
-  final MapProjection projection;
-  final DateTime now;
+  final Color color;
+  final IconData icon;
+  final String label;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    for (final user in users) {
-      final stale = now.difference(user.seenAt) > _staleAfter;
-      final base = user.hasDisability
-          ? GColors.assist
-          : _palette[user.userId.hashCode.abs() % _palette.length];
-      final color = stale ? base.withValues(alpha: 0.45) : base;
-      final c = projection.toPixels(user.position);
-
-      if (user.hasDisability) {
-        canvas.drawCircle(
-          c,
-          21,
-          Paint()..color = base.withValues(alpha: stale ? 0.12 : 0.22),
-        );
-      }
-      canvas.drawCircle(
-        c + const Offset(0, 1.5),
-        15,
-        Paint()..color = const Color(0x33000000),
-      );
-      canvas.drawCircle(c, 15, Paint()..color = Colors.white);
-      canvas.drawCircle(c, 12, Paint()..color = color);
-      if (user.hasDisability) {
-        _icon(canvas, Icons.accessible_rounded, c, 17);
-      } else {
-        _text(
-          canvas,
-          user.name.isEmpty ? '?' : user.name.characters.first.toUpperCase(),
-          c,
-          const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          child: Icon(icon, size: 14, color: Colors.white),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: GColors.text,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
           ),
-        );
-      }
-
-      final label = _layout(
-        user.name,
-        TextStyle(
-          color: stale ? GColors.textMuted : GColors.text,
-          fontSize: 11.5,
-          fontWeight: FontWeight.w600,
         ),
-      );
-      final labelDy = user.hasDisability ? 21 : 15;
-      final pill = RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: c + Offset(0, labelDy + 4 + label.height / 2 + 2),
-          width: label.width + 12,
-          height: label.height + 4,
-        ),
-        const Radius.circular(10),
-      );
-      canvas.drawRRect(pill, Paint()..color = const Color(0xE6FFFFFF));
-      label.paint(
-        canvas,
-        pill.center - Offset(label.width / 2, label.height / 2),
-      );
-    }
+      ],
+    );
   }
-
-  TextPainter _layout(String text, TextStyle style) => TextPainter(
-    text: TextSpan(text: text, style: style),
-    textDirection: TextDirection.ltr,
-    maxLines: 1,
-    ellipsis: '…',
-  )..layout(maxWidth: 140);
-
-  void _text(Canvas canvas, String text, Offset centre, TextStyle style) {
-    final tp = _layout(text, style);
-    tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
-  }
-
-  void _icon(Canvas canvas, IconData icon, Offset centre, double size) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        style: TextStyle(
-          fontSize: size,
-          fontFamily: icon.fontFamily,
-          package: icon.fontPackage,
-          color: Colors.white,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(_PeoplePainter old) => true;
 }
+

@@ -22,6 +22,9 @@ abstract final class GColors {
 
   /// Marks people who need assistance (employees with a disability).
   static const assist = Color(0xFF7B1FA2);
+
+  /// Marks volunteers on the emergency response team.
+  static const responder = Color(0xFF0A2A66);
 }
 
 /// Visual category of a room, mirroring Google's POI colour coding.
